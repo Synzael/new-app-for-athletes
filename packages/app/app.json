@@ -1,32 +1,55 @@
 {
   "expo": {
-    "name": "ts-app",
-    "description": "This project is really great.",
-    "slug": "ts-app",
-    "privacy": "public",
-    "sdkVersion": "27.0.0",
-    "platforms": ["ios", "android"],
+    "name": "Athlete Recruiting",
+    "slug": "athlete-recruiting",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "athleterecruiting",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a1a2e"
     },
-    "updates": {
-      "fallbackToCacheTimeout": 0
-    },
-    "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.athleterecruiting",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take photos for your athlete profile",
+        "NSPhotoLibraryUsageDescription": "Select photos for your profile",
+        "NSMicrophoneUsageDescription": "Record highlight videos"
+      }
     },
-    "ignoreNodeModulesValidation": true,
-    "packagerOpts": {
-      "config": "rn-cli.config.js",
-      "projectRoots": "",
-      "sourceExts": ["ts", "tsx"],
-      "transformer": "node_modules/react-native-typescript-transformer/index.js"
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.yourcompany.athleterecruiting",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-image-picker",
+      "expo-notifications",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
     }
   }
 }
