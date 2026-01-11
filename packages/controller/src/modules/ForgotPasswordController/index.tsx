@@ -1,51 +1,28 @@
 import * as React from "react";
-import { graphql, ChildMutateProps } from "react-apollo";
-import gql from "graphql-tag";
-import {
-  SendForgotPasswordEmailMutation,
-  SendForgotPasswordEmailMutationVariables
-} from "../../schemaTypes";
+import { apiClient, handleApiError } from "@abb/common";
 
 interface Props {
-  children: (
-    data: {
-      submit: (
-        values: SendForgotPasswordEmailMutationVariables
-      ) => Promise<null>;
-    }
-  ) => JSX.Element | null;
+  children: (data: {
+    submit: (values: { email: string }) => Promise<null>;
+  }) => JSX.Element | null;
 }
 
-class C extends React.PureComponent<
-  ChildMutateProps<
-    Props,
-    SendForgotPasswordEmailMutation,
-    SendForgotPasswordEmailMutationVariables
-  >
-> {
-  submit = async (values: SendForgotPasswordEmailMutationVariables) => {
-    console.log(values);
-    const response = await this.props.mutate({
-      variables: values
-    });
-    console.log("response: ", response);
+export class ForgotPasswordController extends React.PureComponent<Props> {
+  submit = async (values: { email: string }) => {
+    try {
+      await apiClient.post("/auth/forgot-password", {
+        email: values.email,
+      });
 
-    return null;
+      return null;
+    } catch (error: any) {
+      // Don't reveal errors for security
+      console.error("Forgot password error:", handleApiError(error));
+      return null;
+    }
   };
 
   render() {
     return this.props.children({ submit: this.submit });
   }
 }
-
-const forgotPasswordMutation = gql`
-  mutation SendForgotPasswordEmailMutation($email: String!) {
-    sendForgotPasswordEmail(email: $email)
-  }
-`;
-
-export const ForgotPasswordController = graphql<
-  Props,
-  SendForgotPasswordEmailMutation,
-  SendForgotPasswordEmailMutationVariables
->(forgotPasswordMutation)(C);

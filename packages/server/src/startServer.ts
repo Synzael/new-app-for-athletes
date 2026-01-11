@@ -1,74 +1,57 @@
 import "reflect-metadata";
 // tslint:disable-next-line:no-var-requires
 require("dotenv-safe").config();
-import { GraphQLServer } from "graphql-yoga";
+import * as express from "express";
+import { Express } from "express";
 import * as session from "express-session";
 import * as connectRedis from "connect-redis";
 import * as RateLimit from "express-rate-limit";
 import * as RateLimitRedisStore from "rate-limit-redis";
-import { applyMiddleware } from "graphql-middleware";
-import * as express from "express";
-import { RedisPubSub } from "graphql-redis-subscriptions";
+import * as cors from "cors";
 
 import { redis } from "./redis";
 import { createTypeormConn } from "./utils/createTypeormConn";
 import { confirmEmail } from "./routes/confirmEmail";
-import { genSchema } from "./utils/genSchema";
-import { redisSessionPrefix, listingCacheKey } from "./constants";
+import { redisSessionPrefix } from "./constants";
 import { createTestConn } from "./testUtils/createTestConn";
-// import { middlewareShield } from "./shield";
-import { middleware } from "./middleware";
-import { userLoader } from "./loaders/UserLoader";
-import { Listing } from "./entity/Listing";
+import { errorHandler } from "./middleware/errorHandler.middleware";
+import { apiRouter } from "./routes/api/v1";
 
-const SESSION_SECRET = "ajslkjalksjdfkl";
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET && process.env.NODE_ENV !== "test") {
+  throw new Error("SESSION_SECRET environment variable is required");
+}
 const RedisStore = connectRedis(session as any);
 
-export const startServer = async () => {
+export const startServer = async (): Promise<Express> => {
   if (process.env.NODE_ENV === "test") {
     await redis.flushall();
   }
 
-  const schema = genSchema() as any;
-  applyMiddleware(schema, middleware);
+  const app = express();
 
-  const pubsub = new RedisPubSub(
-    process.env.NODE_ENV === "production"
-      ? {
-          connection: process.env.REDIS_URL as any
-        }
-      : {}
-  );
+  // Body parsing middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
-  const server = new GraphQLServer({
-    schema,
-    context: ({ request, response }) => ({
-      redis,
-      url: request ? request.protocol + "://" + request.get("host") : "",
-      session: request ? request.session : undefined,
-      req: request,
-      res: response,
-      userLoader: userLoader(),
-      pubsub
-    })
-  });
-
-  server.express.use(
+  // Rate limiting
+  app.use(
     new RateLimit({
       store: new RateLimitRedisStore({
-        client: redis
+        client: redis,
       }),
       windowMs: 15 * 60 * 1000, // 15 minutes
       max: 100, // limit each IP to 100 requests per windowMs
-      delayMs: 0 // disable delaying - full speed until the max limit is reached
+      delayMs: 0, // disable delaying - full speed until the max limit is reached
     })
   );
 
-  server.express.use(
+  // Session management
+  app.use(
     session({
       store: new RedisStore({
         client: redis as any,
-        prefix: redisSessionPrefix
+        prefix: redisSessionPrefix,
       }),
       name: "qid",
       secret: SESSION_SECRET,
@@ -76,48 +59,53 @@ export const startServer = async () => {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        // secure: process.env.NODE_ENV === "production",
-        secure: false,
-        maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
-      }
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      },
     } as any)
   );
 
-  server.express.use("/images", express.static("images"));
+  // CORS
+  app.use(
+    cors({
+      credentials: true,
+      origin:
+        process.env.NODE_ENV === "test"
+          ? "*"
+          : (process.env.FRONTEND_HOST as string) || "http://localhost:3000",
+    })
+  );
 
-  const cors = {
-    credentials: true,
-    origin:
-      process.env.NODE_ENV === "test"
-        ? "*"
-        : (process.env.FRONTEND_HOST as string)
-  };
+  // Static files
+  app.use("/images", express.static("images"));
 
-  server.express.get("/confirm/:id", confirmEmail);
+  // Email confirmation route
+  app.get("/confirm/:id", confirmEmail);
 
+  // Mount REST API routes
+  app.use("/api/v1", apiRouter);
+
+  // Global error handler (must be last)
+  app.use(errorHandler);
+
+  // Database connection
   if (process.env.NODE_ENV === "test") {
     await createTestConn(true);
   } else {
     await createTypeormConn();
-    // await conn.runMigrations();
   }
 
-  // clear cache
-  await redis.del(listingCacheKey);
-  // fill cache
-  const listings = await Listing.find();
-  const listingStrings = listings.map(x => JSON.stringify(x));
-  if (listingStrings.length) {
-    await redis.lpush(listingCacheKey, ...listingStrings);
-  }
-  // console.log(await redis.lrange(listingCacheKey, 0, -1));
+  const port = process.env.NODE_ENV === "test" ? 0 : process.env.PORT || 4000;
 
-  const port = process.env.PORT || 4000;
-  const app = await server.start({
-    cors,
-    port: process.env.NODE_ENV === "test" ? 0 : port
+  const server = app.listen(port, () => {
+    if (process.env.NODE_ENV !== "test") {
+      console.log(`Server is running on localhost:${port}`);
+    }
   });
-  console.log("Server is running on localhost:4000");
+
+  // For testing: attach the server instance
+  (app as any).server = server;
 
   return app;
 };

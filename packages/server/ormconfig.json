@@ -2,8 +2,8 @@
   {
     "name": "production",
     "type": "postgres",
-    "synchronize": true,
-    "logging": true
+    "synchronize": false,
+    "logging": false
   },
   {
     "name": "development",
