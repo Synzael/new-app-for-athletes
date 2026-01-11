@@ -1,79 +1,48 @@
 import * as React from "react";
-import {
-  graphql,
-  ChildMutateProps,
-  withApollo,
-  WithApolloClient
-} from "react-apollo";
-import gql from "graphql-tag";
-import { LoginMutation, LoginMutationVariables } from "../../schemaTypes";
-import { normalizeErrors } from "../../utils/normalizeErrors";
+import { apiClient, handleApiError } from "@abb/common";
 import { NormalizedErrorMap } from "../../types/NormalizedErrorMap";
 
 interface Props {
   onSessionId?: (sessionId: string) => void;
-  children: (
-    data: {
-      submit: (
-        values: LoginMutationVariables
-      ) => Promise<NormalizedErrorMap | null>;
-    }
-  ) => JSX.Element | null;
+  children: (data: {
+    submit: (values: { email: string; password: string }) => Promise<NormalizedErrorMap | null>;
+  }) => JSX.Element | null;
 }
 
-class C extends React.PureComponent<
-  ChildMutateProps<
-    WithApolloClient<Props>,
-    LoginMutation,
-    LoginMutationVariables
-  >
-> {
-  submit = async (values: LoginMutationVariables) => {
-    console.log(values);
-    const {
-      data: {
-        login: { errors, sessionId }
+export class LoginController extends React.PureComponent<Props> {
+  submit = async (values: { email: string; password: string }) => {
+    try {
+      const response = await apiClient.post("/auth/login", {
+        email: values.email,
+        password: values.password,
+      });
+
+      // Session is managed via cookies, no need to handle sessionId
+      if (this.props.onSessionId) {
+        // For backward compatibility, call with user ID if needed
+        this.props.onSessionId(response.data.user.id);
       }
-    } = await this.props.mutate({
-      variables: values
-    });
-    console.log("response: ", errors, sessionId);
 
-    if (errors) {
-      // show errors
-      // [{path: 'email': message: 'inval...'}]
-      // {email: 'invalid....'}
-      return normalizeErrors(errors);
+      return null;
+    } catch (error: any) {
+      const apiError = handleApiError(error);
+
+      // Normalize errors to match expected format
+      const normalizedErrors: NormalizedErrorMap = {};
+
+      if (apiError.errors && apiError.errors.length > 0) {
+        apiError.errors.forEach((err: any) => {
+          normalizedErrors[err.path] = err.message;
+        });
+      } else {
+        normalizedErrors.email = apiError.error;
+      }
+
+      return normalizedErrors;
     }
-
-    if (sessionId && this.props.onSessionId) {
-      this.props.onSessionId(sessionId);
-    }
-
-    await this.props.client.resetStore();
-
-    return null;
   };
 
   render() {
     return this.props.children({ submit: this.submit });
   }
 }
-
-const loginMutation = gql`
-  mutation LoginMutation($email: String!, $password: String!) {
-    login(email: $email, password: $password) {
-      errors {
-        path
-        message
-      }
-      sessionId
-    }
-  }
-`;
-
-export const LoginController = graphql<
-  Props,
-  LoginMutation,
-  LoginMutationVariables
->(loginMutation)(withApollo<Props>(C as any));

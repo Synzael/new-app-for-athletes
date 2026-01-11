@@ -1,55 +1,42 @@
 import * as React from "react";
-import { graphql, ChildMutateProps } from "react-apollo";
-import gql from "graphql-tag";
-import { RegisterMutation, RegisterMutationVariables } from "../../schemaTypes";
-import { normalizeErrors } from "../../utils/normalizeErrors";
+import { apiClient, handleApiError } from "@abb/common";
 import { NormalizedErrorMap } from "../../types/NormalizedErrorMap";
 
 interface Props {
-  children: (
-    data: {
-      submit: (
-        values: RegisterMutationVariables
-      ) => Promise<NormalizedErrorMap | null>;
-    }
-  ) => JSX.Element | null;
+  children: (data: {
+    submit: (values: { email: string; password: string; role?: string }) => Promise<NormalizedErrorMap | null>;
+  }) => JSX.Element | null;
 }
 
-class C extends React.PureComponent<
-  ChildMutateProps<Props, RegisterMutation, RegisterMutationVariables>
-> {
-  submit = async (values: RegisterMutationVariables) => {
-    console.log(values);
-    const {
-      data: { register }
-    } = await this.props.mutate({
-      variables: values
-    });
-    console.log("response: ", register);
+export class RegisterController extends React.PureComponent<Props> {
+  submit = async (values: { email: string; password: string; role?: string }) => {
+    try {
+      await apiClient.post("/auth/register", {
+        email: values.email,
+        password: values.password,
+        role: values.role || "athlete",
+      });
 
-    if (register) {
-      return normalizeErrors(register);
+      return null;
+    } catch (error: any) {
+      const apiError = handleApiError(error);
+
+      // Normalize errors to match expected format
+      const normalizedErrors: NormalizedErrorMap = {};
+
+      if (apiError.errors && apiError.errors.length > 0) {
+        apiError.errors.forEach((err: any) => {
+          normalizedErrors[err.path] = err.message;
+        });
+      } else {
+        normalizedErrors.email = apiError.error;
+      }
+
+      return normalizedErrors;
     }
-
-    return null;
   };
 
   render() {
     return this.props.children({ submit: this.submit });
   }
 }
-
-const registerMutation = gql`
-  mutation RegisterMutation($email: String!, $password: String!) {
-    register(email: $email, password: $password) {
-      path
-      message
-    }
-  }
-`;
-
-export const RegisterController = graphql<
-  Props,
-  RegisterMutation,
-  RegisterMutationVariables
->(registerMutation)(C);

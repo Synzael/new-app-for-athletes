@@ -5,9 +5,18 @@ import {
   BaseEntity,
   PrimaryGeneratedColumn,
   BeforeInsert,
-  OneToMany
+  OneToMany,
+  OneToOne
 } from "typeorm";
 import { Listing } from "./Listing";
+import { Athlete } from "./Athlete";
+
+export enum UserRole {
+  ATHLETE = "athlete",
+  COACH = "coach",
+  BRAND = "brand",
+  ADMIN = "admin"
+}
 
 @Entity("users")
 export class User extends BaseEntity {
@@ -24,8 +33,18 @@ export class User extends BaseEntity {
   @Column("boolean", { default: false })
   forgotPasswordLocked: boolean;
 
+  @Column({
+    type: "enum",
+    enum: UserRole,
+    default: UserRole.ATHLETE
+  })
+  role: UserRole;
+
   @OneToMany(() => Listing, listing => listing.user)
   listings: Listing[];
+
+  @OneToOne(() => Athlete, athlete => athlete.user)
+  athlete: Athlete;
 
   @BeforeInsert()
   async hashPasswordBeforeInsert() {
